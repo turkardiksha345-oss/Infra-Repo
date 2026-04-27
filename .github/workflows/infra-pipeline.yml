@@ -1,0 +1,61 @@
+name: Infra Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  terraform:
+    name: Terraform Workflow
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform/envs/dev
+
+    steps:
+
+    # 1️⃣ Checkout repo
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    # 2️⃣ Setup Terraform
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    # 3️⃣ Configure AWS credentials
+    - name: Configure AWS
+      uses: aws-actions/configure-aws-credentials@v3
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+        aws-region: ap-south-1
+
+    # 4️⃣ Terraform Init
+    - name: Terraform Init
+      run: terraform init
+
+    # 5️⃣ Terraform Validate
+    - name: Terraform Validate
+      run: terraform validate
+
+    # 6️⃣ Terraform Plan
+    - name: Terraform Plan
+      run: terraform plan -out=tfplan
+
+    # 7️⃣ Security Scan (tfsec)
+    - name: Run tfsec
+      uses: aquasecurity/tfsec-action@v1
+
+    # 8️⃣ Upload Plan (optional)
+    - name: Upload Plan
+      uses: actions/upload-artifact@v3
+      with:
+        name: tfplan
+        path: terraform/envs/dev/tfplan
+
+    # 9️⃣ Apply (only on main branch)
+    - name: Terraform Apply
+      if: github.ref == 'refs/heads/main'
+      run: terraform apply -auto-approve tfplan
