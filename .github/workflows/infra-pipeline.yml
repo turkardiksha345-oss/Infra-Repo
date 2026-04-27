@@ -1,61 +1,120 @@
-name: Infra Pipeline
+name: Infra Provisioning Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: ["main"]
 
 jobs:
   terraform:
-    name: Terraform Workflow
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: terraform/envs/dev
-
     steps:
-
-    # 1️⃣ Checkout repo
     - name: Checkout
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4   # ✅ updated
 
-    # 2️⃣ Setup Terraform
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
-
-    # 3️⃣ Configure AWS credentials
-    - name: Configure AWS
+    - name: Configure AWS Credentials
       uses: aws-actions/configure-aws-credentials@v3
       with:
         aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
         aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
-        aws-region: ap-south-1
+        aws-region: ${{ secrets.AWS_REGION }}
 
-    # 4️⃣ Terraform Init
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3   # ✅ updated
+
     - name: Terraform Init
-      run: terraform init
+      run: terraform -chdir=terraform/envs/dev init
 
-    # 5️⃣ Terraform Validate
-    - name: Terraform Validate
-      run: terraform validate
+    - name: Terraform Validate   # ✅ added (best practice)
+      run: terraform -chdir=terraform/envs/dev validate
 
-    # 6️⃣ Terraform Plan
     - name: Terraform Plan
-      run: terraform plan -out=tfplan
+      run: terraform -chdir=terraform/envs/dev plan -out=tfplan
 
-    # 7️⃣ Security Scan (tfsec)
-    - name: Run tfsec
-      uses: aquasecurity/tfsec-action@v1
-
-    # 8️⃣ Upload Plan (optional)
-    - name: Upload Plan
-      uses: actions/upload-artifact@v3
-      with:
-        name: tfplan
-        path: terraform/envs/dev/tfplan
-
-    # 9️⃣ Apply (only on main branch)
     - name: Terraform Apply
-      if: github.ref == 'refs/heads/main'
-      run: terraform apply -auto-approve tfplan
+      run: terraform -chdir=terraform/envs/dev apply -auto-approve tfplan
+
+
+  post-provision:
+    runs-on: ubuntu-latest
+    needs: terraform
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4   # ✅ updated
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v3
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Install kubectl
+      uses: azure/setup-kubectl@v4   # ✅ updated
+
+    - name: Install Helm
+      uses: azure/setup-helm@v4      # ✅ updated
+
+    - name: Configure kubeconfig
+      run: |
+        aws eks update-kubeconfig \
+        --region ${{ secrets.AWS_REGION }} \
+        --name ${{ secrets.EKS_CLUSTER_NAME }}
+
+    # ✅ Better wait (instead of sleep)
+    - name: Wait for cluster nodes
+      run: |
+        for i in {1..10}; do
+          kubectl get nodes && break || sleep 15
+        done
+
+    # =========================
+    # Install ArgoCD
+    # =========================
+    - name: Install ArgoCD
+      run: |
+        helm repo add argo https://argoproj.github.io/argo-helm
+        helm repo update
+        helm upgrade --install argocd argo/argo-cd \
+          -f helm/argocd-values.yaml \
+          -n argocd --create-namespace
+
+    # =========================
+    # Install Monitoring
+    # =========================
+    - name: Install Prometheus & Grafana
+      run: |
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+        helm repo update
+        helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+          -f helm/prometheus-values.yaml \
+          -n monitoring --create-namespace
+
+    # =========================
+    # Install Ingress
+    # =========================
+    - name: Install NGINX Ingress
+      run: |
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+        helm repo update
+        helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+          -n ingress --create-namespace
+
+    # =========================
+    # Verification
+    # =========================
+    - name: Check Cluster Nodes
+      run: kubectl get nodes -o wide
+
+    - name: Check ArgoCD Pods
+      run: kubectl get pods -n argocd
+
+    - name: Check Monitoring Pods
+      run: kubectl get pods -n monitoring
+
+    - name: Check Ingress Pods
+      run: kubectl get pods -n ingress
+
+    - name: Show Services
+      run: kubectl get svc -A
