@@ -46,19 +46,22 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      # 🔥 DESTROY (only when manually selected)
+     
+       # 🔥 DESTROY (Manual Trigger Only)
       - name: Terraform Destroy
         if: ${{ github.event.inputs.action == 'destroy' }}
-        run: terraform destroy -auto-approve
+        run: |
+          terraform -chdir=terraform/envs/dev init
+           terraform -chdir=terraform/envs/dev destroy -auto-approve
 
       # 🔥 APPLY (default for push + manual apply)
       - name: Terraform Plan
         if: ${{ github.event.inputs.action != 'destroy' }}
         run: terraform plan -out=tfplan
 
-      - name: Terraform Apply
-        if: ${{ github.event.inputs.action != 'destroy' }}
-        run: terraform apply -auto-approve tfplan
+     # - name: Terraform Apply
+      #  if: ${{ github.event.inputs.action != 'destroy' }}
+      #  run: terraform apply -auto-approve tfplan
 
 
   post-provision:
