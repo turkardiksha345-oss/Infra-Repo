@@ -8,51 +8,35 @@ jobs:
   terraform:
     runs-on: ubuntu-latest
 
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4   # ✅ updated
-
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v3
-      with:name: Infra Provisioning Pipeline
-
-on:
-  push:
-    branches: ["main"]
-
-jobs:
-  terraform:
-    runs-on: ubuntu-latest
-
     defaults:
       run:
-        working-directory: terraform/envs/dev   # ✅ FIXED PATH
+        working-directory: terraform/envs/dev
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v3
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
 
-    - name: Terraform Init
-      run: terraform init
+      - name: Terraform Init
+        run: terraform init
 
-    - name: Terraform Validate
-      run: terraform validate
+      - name: Terraform Validate
+        run: terraform validate
 
-    - name: Terraform Plan
-      run: terraform plan -out=tfplan
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
 
-    - name: Terraform Apply
-      run: terraform apply -auto-approve tfplan
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
 
 
   post-provision:
@@ -60,138 +44,71 @@ jobs:
     needs: terraform
 
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v3
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v3
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Install kubectl
-      uses: azure/setup-kubectl@v4
+      - name: Install kubectl
+        uses: azure/setup-kubectl@v4
 
-    - name: Install Helm
-      uses: azure/setup-helm@v4
+      - name: Install Helm
+        uses: azure/setup-helm@v4
 
-    - name: Configure kubeconfig
-      run: |
-        aws eks update-kubeconfig \
-        --region ${{ secrets.AWS_REGION }} \
-        --name ${{ secrets.EKS_CLUSTER_NAME }}
+      - name: Configure kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+          --region ${{ secrets.AWS_REGION }} \
+          --name ${{ secrets.EKS_CLUSTER_NAME }}
 
-    # ✅ Smart wait instead of blind sleep
-    - name: Wait for cluster readiness
-      run: |
-        for i in {1..15}; do
-          kubectl get nodes && break || sleep 20
-        done
+      - name: Wait for cluster readiness
+        run: |
+          for i in {1..15}; do
+            kubectl get nodes && break || sleep 20
+          done
 
-    # =========================
-    # Install ArgoCD
-    # =========================
-    - name: Install ArgoCD
-      run: |
-        helm repo add argo https://argoproj.github.io/argo-helm
-        helm repo update
-        helm upgrade --install argocd argo/argo-cd \
-          -f helm/argocd-values.yaml \
-          -n argocd --create-namespace
+      # =========================
+      # Install ArgoCD
+      # =========================
+      - name: Install ArgoCD
+        run: |
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo update
+          helm upgrade --install argocd argo/argo-cd \
+            -f helm/argocd-values.yaml \
+            -n argocd --create-namespace
 
-    # =========================
-    # Install Monitoring
-    # =========================
-    - name: Install Prometheus & Grafana
-      run: |
-        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-        helm repo update
-        helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-          -f helm/prometheus-values.yaml \
-          -n monitoring --create-namespace
+      # =========================
+      # Install Monitoring
+      # =========================
+      - name: Install Prometheus & Grafana
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo update
+          helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+            -f helm/prometheus-values.yaml \
+            -n monitoring --create-namespace
 
-    # =========================
-    # Install Ingress
-    # =========================
-    - name: Install NGINX Ingress
-      run: |
-        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-        helm repo update
-        helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-          -n ingress --create-namespace
+      # =========================
+      # Install Ingress
+      # =========================
+      - name: Install NGINX Ingress
+        run: |
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo update
+          helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+            -n ingress --create-namespace
 
-    # =========================
-    # Verification
-    # =========================
-    - name: Check Cluster Nodes
-      run: kubectl get nodes -o wide
-
-    - name: Check ArgoCD Pods
-      run: kubectl get pods -n argocd
-
-    - name: Check Monitoring Pods
-      run: kubectl get pods -n monitoring
-
-    - name: Check Ingress Pods
-      run: kubectl get pods -n ingress
-
-    - name: Show Services
-      run: kubectl get svc -A
-
-    # ✅ Better wait (instead of sleep)
-    - name: Wait for cluster nodes
-      run: |
-        for i in {1..10}; do
-          kubectl get nodes && break || sleep 15
-        done
-
-    # =========================
-    # Install ArgoCD
-    # =========================
-    - name: Install ArgoCD
-      run: |
-        helm repo add argo https://argoproj.github.io/argo-helm
-        helm repo update
-        helm upgrade --install argocd argo/argo-cd \
-          -f helm/argocd-values.yaml \
-          -n argocd --create-namespace
-
-    # =========================
-    # Install Monitoring
-    # =========================
-    - name: Install Prometheus & Grafana
-      run: |
-        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
-        helm repo update
-        helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
-          -f helm/prometheus-values.yaml \
-          -n monitoring --create-namespace
-
-    # =========================
-    # Install Ingress
-    # =========================
-    - name: Install NGINX Ingress
-      run: |
-        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
-        helm repo update
-        helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
-          -n ingress --create-namespace
-
-    # =========================
-    # Verification
-    # =========================
-    - name: Check Cluster Nodes
-      run: kubectl get nodes -o wide
-
-    - name: Check ArgoCD Pods
-      run: kubectl get pods -n argocd
-
-    - name: Check Monitoring Pods
-      run: kubectl get pods -n monitoring
-
-    - name: Check Ingress Pods
-      run: kubectl get pods -n ingress
-
-    - name: Show Services
-      run: kubectl get svc -A
+      # =========================
+      # Verification
+      # =========================
+      - name: Verify Cluster
+        run: |
+          kubectl get nodes -o wide
+          kubectl get pods -A
+          kubectl get svc -A
