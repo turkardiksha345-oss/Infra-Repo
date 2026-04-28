@@ -58,3 +58,4 @@ output "subnet_ids" {
   description = "Subnets used by EKS"
   value       = data.aws_subnets.default_subnets.ids
 }
+
