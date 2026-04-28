@@ -4,8 +4,7 @@ on:
   push:
     branches: ["main"]
 
-    
-  workflow_dispatch:   # ✅ manual trigger with option
+  workflow_dispatch:
     inputs:
       action:
         description: "Choose action"
@@ -47,29 +46,27 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
-      # =========================
-      # DESTROY (if selected)
-      # =========================
+      # 🔥 DESTROY (only when manually selected)
       - name: Terraform Destroy
         if: ${{ github.event.inputs.action == 'destroy' }}
         run: terraform destroy -auto-approve
 
-      # =========================
-      # APPLY (default)
-      # =========================
+      # 🔥 APPLY (default for push + manual apply)
       - name: Terraform Plan
-        if: ${{ github.event.inputs.action == 'apply' }}
+        if: ${{ github.event.inputs.action != 'destroy' }}
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
-        if: ${{ github.event.inputs.action == 'apply' }}
+        if: ${{ github.event.inputs.action != 'destroy' }}
         run: terraform apply -auto-approve tfplan
 
 
   post-provision:
     runs-on: ubuntu-latest
     needs: terraform
-    if: ${{ github.event.inputs.action == 'apply' }}   # ❗ only for apply
+
+    # 🔥 RUN for push + manual apply
+    if: ${{ github.event.inputs.action != 'destroy' }}
 
     steps:
       - name: Checkout
@@ -95,7 +92,8 @@ jobs:
         run: |
           aws eks update-kubeconfig \
           --region ${{ secrets.AWS_REGION }} \
-          --name  my-eks-cluster
+          --name my-eks-cluster
+
       - name: Wait for cluster readiness
         run: |
           for i in {1..15}; do
