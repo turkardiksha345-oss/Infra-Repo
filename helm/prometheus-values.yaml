@@ -4,7 +4,13 @@ grafana:
       enabled: true
       host: smtp.gmail.com:587
       user: dikshaturkar2022@gmail.com
-      password: lryptfnitxidxwze
+      password: $__file{/etc/secrets/smtp_password}
       from_address: dikshaturkar2022@gmail.com
       from_name: Grafana Alerts
       skip_verify: true
+
+  extraSecretMounts:
+    - name: smtp-secret
+      secretName: grafana-smtp-secret
+      mountPath: /etc/secrets
+      readOnly: true
