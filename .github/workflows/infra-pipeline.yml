@@ -1,9 +1,6 @@
 name: Infra Provisioning Pipeline
 
 on:
-  push:
-    branches: ["main"]
-
   workflow_dispatch:
     inputs:
       action:
@@ -14,7 +11,7 @@ on:
         options:
           - apply
           - destroy
-          
+
 jobs:
   terraform:
     runs-on: ubuntu-latest
