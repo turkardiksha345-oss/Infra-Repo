@@ -1,8 +1,16 @@
 name: Infra Provisioning Pipeline
 
 on:
-  push:
-    branches: ["main"]
+  workflow_dispatch:   # ✅ manual trigger with option
+    inputs:
+      action:
+        description: "Choose action"
+        required: true
+        default: "apply"
+        type: choice
+        options:
+          - apply
+          - destroy
 
 jobs:
   terraform:
@@ -16,7 +24,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ✅ FIXED: Correct Secret Names
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -24,7 +31,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # ✅ Debug (to verify credentials)
       - name: Debug AWS Identity
         run: aws sts get-caller-identity
 
@@ -37,22 +43,34 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      # =========================
+      # DESTROY (if selected)
+      # =========================
+      - name: Terraform Destroy
+        if: ${{ github.event.inputs.action == 'destroy' }}
+        run: terraform destroy -auto-approve
+
+      # =========================
+      # APPLY (default)
+      # =========================
       - name: Terraform Plan
+        if: ${{ github.event.inputs.action == 'apply' }}
         run: terraform plan -out=tfplan
 
       - name: Terraform Apply
+        if: ${{ github.event.inputs.action == 'apply' }}
         run: terraform apply -auto-approve tfplan
 
 
   post-provision:
     runs-on: ubuntu-latest
     needs: terraform
+    if: ${{ github.event.inputs.action == 'apply' }}   # ❗ only for apply
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ✅ FIXED: Correct Secret Names again
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
@@ -60,7 +78,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # ✅ Debug again
       - name: Debug AWS Identity
         run: aws sts get-caller-identity
 
@@ -82,9 +99,6 @@ jobs:
             kubectl get nodes && break || sleep 20
           done
 
-      # =========================
-      # Install ArgoCD
-      # =========================
       - name: Install ArgoCD
         run: |
           helm repo add argo https://argoproj.github.io/argo-helm
@@ -93,9 +107,6 @@ jobs:
             -f helm/argocd-values.yaml \
             -n argocd --create-namespace
 
-      # =========================
-      # Install Monitoring
-      # =========================
       - name: Install Prometheus & Grafana
         run: |
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -104,9 +115,6 @@ jobs:
             -f helm/prometheus-values.yaml \
             -n monitoring --create-namespace
 
-      # =========================
-      # Install Ingress
-      # =========================
       - name: Install NGINX Ingress
         run: |
           helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
@@ -114,9 +122,6 @@ jobs:
           helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
             -n ingress --create-namespace
 
-      # =========================
-      # Verification
-      # =========================
       - name: Verify Cluster
         run: |
           kubectl get nodes -o wide
