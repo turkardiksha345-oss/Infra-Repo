@@ -124,8 +124,9 @@ jobs:
           helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
             -n ingress --create-namespace
 
-      - name: Verify Cluster
+      - name: Verify Cluster Setup
         run: |
           kubectl get nodes -o wide
           kubectl get pods -A
           kubectl get svc -A
+
