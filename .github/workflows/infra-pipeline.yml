@@ -24,6 +24,10 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
+      # ✅ Debug (temporary – remove later)
+      - name: Debug AWS Identity
+        run: aws sts get-caller-identity
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
@@ -48,13 +52,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ✅ AWS Credentials again (new job needs it)
+      # ✅ AWS Credentials again (new job = new environment)
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v3
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
+
+      # ✅ Debug again
+      - name: Debug AWS Identity
+        run: aws sts get-caller-identity
 
       - name: Install kubectl
         uses: azure/setup-kubectl@v4
@@ -74,6 +82,9 @@ jobs:
             kubectl get nodes && break || sleep 20
           done
 
+      # =========================
+      # Install ArgoCD
+      # =========================
       - name: Install ArgoCD
         run: |
           helm repo add argo https://argoproj.github.io/argo-helm
@@ -82,6 +93,9 @@ jobs:
             -f helm/argocd-values.yaml \
             -n argocd --create-namespace
 
+      # =========================
+      # Install Monitoring
+      # =========================
       - name: Install Prometheus & Grafana
         run: |
           helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
@@ -90,6 +104,9 @@ jobs:
             -f helm/prometheus-values.yaml \
             -n monitoring --create-namespace
 
+      # =========================
+      # Install Ingress
+      # =========================
       - name: Install NGINX Ingress
         run: |
           helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
@@ -97,6 +114,9 @@ jobs:
           helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
             -n ingress --create-namespace
 
+      # =========================
+      # Verification
+      # =========================
       - name: Verify Cluster
         run: |
           kubectl get nodes -o wide
