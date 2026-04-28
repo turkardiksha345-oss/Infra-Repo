@@ -1,8 +1,8 @@
 terraform {
   backend "s3" {
-    bucket         = "diksha-terraform-state"
+    bucket         = "diksha-infra-repo-terraform"
     key            = "eks/dev/terraform.tfstate"
-    region         = "ap-south-1"
-    dynamodb_table = "terraform-lock"
+    region         = "us-east-1"
+    use_lockfile = true
   }
 }
