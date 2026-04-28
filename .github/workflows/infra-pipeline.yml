@@ -1,6 +1,10 @@
 name: Infra Provisioning Pipeline
 
 on:
+  push:
+    branches: ["main"]
+
+    
   workflow_dispatch:   # ✅ manual trigger with option
     inputs:
       action:
